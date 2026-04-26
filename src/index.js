@@ -14,6 +14,9 @@ const { errorHandler } = require('./middleware/errorHandler');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust Railway's reverse proxy so rate-limiter can read the real client IP
+app.set('trust proxy', 1);
+
 // ── Security & utility middleware ─────────────────────────────────────────────
 app.use(helmet());
 app.use(cors({

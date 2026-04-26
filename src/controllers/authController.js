@@ -25,10 +25,8 @@ async function sendOtp(req, res, next) {
 
     if (dbError) throw dbError;
 
-    // In development, always log the code so testing works even if SMS fails
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`\n📱 OTP for ${phone}: ${code}\n`);
-    }
+    // Always log the OTP code (visible in Railway deploy logs)
+    console.log(`\n📱 OTP for ${phone}: ${code}\n`);
 
     // Send SMS — non-fatal in development so a bad AT key doesn't block testing
     try {
