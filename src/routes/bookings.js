@@ -1,21 +1,21 @@
 const express = require('express');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireDriver } = require('../middleware/auth');
+const { myBookings, myRides, myEarnings } = require('../controllers/bookingsController');
+
 const router = express.Router();
+router.use(requireAuth);
 
-router.post('/', requireAuth, (req, res) => {
-  res.status(501).json({ message: 'Coming soon — create booking' });
-});
+// GET /api/bookings/my          — passenger: my booked rides
+router.get('/my', myBookings);
 
-router.get('/my', requireAuth, (req, res) => {
-  res.status(501).json({ message: 'Coming soon — my bookings' });
-});
+// GET /api/bookings/my/driver   — driver: my posted rides + bookings
+router.get('/my/driver', requireDriver, myRides);
 
-router.get('/:id', requireAuth, (req, res) => {
-  res.status(501).json({ message: 'Coming soon — get booking' });
-});
+// GET /api/bookings/my/earnings — driver: earnings summary
+router.get('/my/earnings', requireDriver, myEarnings);
 
-router.patch('/:id/cancel', requireAuth, (req, res) => {
-  res.status(501).json({ message: 'Coming soon — cancel booking' });
-});
+// Placeholders for future booking creation / cancellation
+router.post('/', (req, res) => res.status(501).json({ message: 'Booking + M-Pesa coming soon' }));
+router.patch('/:id/cancel', (req, res) => res.status(501).json({ message: 'Coming soon' }));
 
 module.exports = router;
