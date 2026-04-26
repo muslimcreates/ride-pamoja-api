@@ -1,5 +1,147 @@
 const supabase = require('../services/supabaseClient');
 
+// ── POST /api/bookings — create a cash booking ────────────────────────────────
+async function createBooking(req, res, next) {
+  try {
+    const { ride_id, seats = 1, notes } = req.body;
+    const passengerId = req.user.id;
+
+    if (!ride_id) return res.status(400).json({ error: 'ride_id is required' });
+    const numSeats = parseInt(seats, 10);
+    if (isNaN(numSeats) || numSeats < 1 || numSeats > 4) {
+      return res.status(400).json({ error: 'Seats must be between 1 and 4' });
+    }
+
+    const { data: ride, error: rideErr } = await supabase
+      .from('rides').select('*').eq('id', ride_id).single();
+
+    if (rideErr || !ride) return res.status(404).json({ error: 'Ride not found' });
+    if (ride.status !== 'active') return res.status(400).json({ error: 'This ride is no longer available' });
+    if (ride.driver_id === passengerId) return res.status(400).json({ error: 'You cannot book your own ride' });
+    if (ride.available_seats < numSeats) {
+      return res.status(400).json({ error: `Only ${ride.available_seats} seat(s) available` });
+    }
+
+    const { data: existing } = await supabase
+      .from('bookings').select('id').eq('ride_id', ride_id)
+      .eq('passenger_id', passengerId).neq('status', 'cancelled').maybeSingle();
+    if (existing) return res.status(409).json({ error: 'You have already booked this ride' });
+
+    const { data: booking, error: bookErr } = await supabase
+      .from('bookings')
+      .insert({
+        ride_id, passenger_id: passengerId,
+        seats: numSeats, total_amount: ride.price_per_seat * numSeats,
+        status: 'confirmed', payment_method: 'cash', payment_status: 'unpaid',
+        notes: notes?.trim() || null,
+      })
+      .select().single();
+
+    if (bookErr) throw bookErr;
+
+    await supabase.from('rides')
+      .update({ available_seats: ride.available_seats - numSeats }).eq('id', ride_id);
+
+    res.status(201).json({ booking });
+  } catch (err) { next(err); }
+}
+
+// ── PATCH /api/bookings/:id/cancel ────────────────────────────────────────────
+async function cancelBooking(req, res, next) {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const { data: booking, error: fetchErr } = await supabase
+      .from('bookings').select('*, ride:rides!ride_id(id, available_seats, status)')
+      .eq('id', id).single();
+
+    if (fetchErr || !booking) return res.status(404).json({ error: 'Booking not found' });
+    if (booking.passenger_id !== userId) return res.status(403).json({ error: 'Not your booking' });
+    if (booking.status === 'cancelled') return res.status(400).json({ error: 'Already cancelled' });
+    if (booking.status === 'completed') return res.status(400).json({ error: 'Cannot cancel a completed booking' });
+
+    const { data: updated, error: updateErr } = await supabase
+      .from('bookings').update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .eq('id', id).select().single();
+    if (updateErr) throw updateErr;
+
+    if (booking.ride?.status === 'active') {
+      await supabase.from('rides')
+        .update({ available_seats: (booking.ride.available_seats || 0) + booking.seats })
+        .eq('id', booking.ride_id);
+    }
+    res.json({ booking: updated });
+  } catch (err) { next(err); }
+}
+
+// ── GET /api/bookings/:id ─────────────────────────────────────────────────────
+async function getBooking(req, res, next) {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const { data: booking, error } = await supabase
+      .from('bookings')
+      .select(`*, ride:rides!ride_id(
+          id, origin_name, destination_name, departure_time, price_per_seat, status,
+          driver:users!driver_id(id, name, rating, avatar_url, phone)
+        ), passenger:users!passenger_id(id, name, avatar_url, phone)`)
+      .eq('id', id).single();
+
+    if (error || !booking) return res.status(404).json({ error: 'Booking not found' });
+
+    const driverId = booking.ride?.driver?.id;
+    if (booking.passenger_id !== userId && driverId !== userId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    res.json({ booking });
+  } catch (err) { next(err); }
+}
+
+// ── GET /api/bookings/my/conversations — inbox for chat tab ───────────────────
+async function myConversations(req, res, next) {
+  try {
+    const userId = req.user.id;
+
+    const { data: pax } = await supabase
+      .from('bookings')
+      .select(`id, status, created_at, ride:rides!ride_id(
+          id, origin_name, destination_name, departure_time,
+          driver:users!driver_id(id, name, avatar_url))`)
+      .eq('passenger_id', userId).neq('status', 'cancelled')
+      .order('created_at', { ascending: false });
+
+    const { data: driverRides } = await supabase
+      .from('rides')
+      .select(`id, origin_name, destination_name, departure_time,
+        bookings:bookings(id, status, created_at,
+          passenger:users!passenger_id(id, name, avatar_url))`)
+      .eq('driver_id', userId).neq('status', 'cancelled');
+
+    const driverConvos = [];
+    for (const ride of driverRides || []) {
+      for (const b of (ride.bookings || [])) {
+        if (b.status !== 'cancelled') {
+          driverConvos.push({
+            id: b.id, status: b.status, created_at: b.created_at,
+            role: 'driver', other_user: b.passenger,
+            ride: { id: ride.id, origin_name: ride.origin_name,
+                    destination_name: ride.destination_name, departure_time: ride.departure_time },
+          });
+        }
+      }
+    }
+
+    const conversations = [
+      ...(pax || []).map((b) => ({ ...b, role: 'passenger', other_user: b.ride?.driver })),
+      ...driverConvos,
+    ].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
+    res.json({ conversations });
+  } catch (err) { next(err); }
+}
+
 // ── GET /api/bookings/my — passenger's bookings ───────────────────────────────
 async function myBookings(req, res, next) {
   try {
@@ -96,4 +238,4 @@ async function myEarnings(req, res, next) {
   }
 }
 
-module.exports = { myBookings, myRides, myEarnings };
+module.exports = { createBooking, cancelBooking, getBooking, myConversations, myBookings, myRides, myEarnings };

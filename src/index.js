@@ -8,6 +8,8 @@ const rateLimit = require('express-rate-limit');
 const authRoutes = require('./routes/auth');
 const ridesRoutes = require('./routes/rides');
 const bookingsRoutes = require('./routes/bookings');
+const messagesRoutes = require('./routes/messages');
+const driverRoutes = require('./routes/driver');
 const paymentsRoutes = require('./routes/payments');
 const { errorHandler } = require('./middleware/errorHandler');
 
@@ -51,9 +53,11 @@ app.get('/health', (req, res) => {
 });
 
 // ── API routes ────────────────────────────────────────────────────────────────
-app.use('/api/auth', authRoutes);
-app.use('/api/rides', ridesRoutes);
+app.use('/api/auth',     authRoutes);
+app.use('/api/rides',    ridesRoutes);
 app.use('/api/bookings', bookingsRoutes);
+app.use('/api/messages', messagesRoutes);
+app.use('/api/driver',   driverRoutes);
 app.use('/api/payments', paymentsRoutes);
 
 // ── 404 catch-all ─────────────────────────────────────────────────────────────

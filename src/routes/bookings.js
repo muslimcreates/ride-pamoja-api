@@ -1,21 +1,22 @@
 const express = require('express');
 const { requireAuth, requireDriver } = require('../middleware/auth');
-const { myBookings, myRides, myEarnings } = require('../controllers/bookingsController');
+const {
+  createBooking, cancelBooking, getBooking, myConversations,
+  myBookings, myRides, myEarnings,
+} = require('../controllers/bookingsController');
 
 const router = express.Router();
 router.use(requireAuth);
 
-// GET /api/bookings/my          — passenger: my booked rides
-router.get('/my', myBookings);
+// Named sub-routes must come before /:id
+router.get('/my/conversations', myConversations);
+router.get('/my/driver',        requireDriver, myRides);
+router.get('/my/earnings',      requireDriver, myEarnings);
+router.get('/my',               myBookings);
 
-// GET /api/bookings/my/driver   — driver: my posted rides + bookings
-router.get('/my/driver', requireDriver, myRides);
-
-// GET /api/bookings/my/earnings — driver: earnings summary
-router.get('/my/earnings', requireDriver, myEarnings);
-
-// Placeholders for future booking creation / cancellation
-router.post('/', (req, res) => res.status(501).json({ message: 'Booking + M-Pesa coming soon' }));
-router.patch('/:id/cancel', (req, res) => res.status(501).json({ message: 'Coming soon' }));
+// Booking CRUD
+router.post('/',            createBooking);
+router.get('/:id',          getBooking);
+router.patch('/:id/cancel', cancelBooking);
 
 module.exports = router;
