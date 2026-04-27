@@ -176,4 +176,69 @@ async function updateRide(req, res, next) {
   }
 }
 
-// ── GET /api/rides/upcoming — active rides departing in the
+// ── GET /api/rides/upcoming — active rides departing in the future ─────────────
+async function getUpcomingRides(req, res, next) {
+  try {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 8, 20);
+
+    // Get active rides departing from now onwards, with driver + their vehicle docs
+    const { data: rides, error } = await supabase
+      .from('rides')
+      .select(`
+        id, origin_name, destination_name, departure_time,
+        price_per_seat, available_seats, total_seats, driver_id,
+        driver:users!driver_id(
+          id, name, avatar_url, rating,
+          driver_docs:driver_documents!user_id(vehicle_model, number_plate)
+        )
+      `)
+      .eq('status', 'active')
+      .gt('available_seats', 0)
+      .gte('departure_time', new Date().toISOString())
+      .order('departure_time', { ascending: true })
+      .limit(limit);
+
+    if (error) throw error;
+
+    // For each ride, fetch confirmed passengers (name + photo only)
+    const enriched = await Promise.all(
+      (rides || []).map(async (ride) => {
+        const { data: bookings } = await supabase
+          .from('bookings')
+          .select('passenger:users!passenger_id(name, avatar_url)')
+          .eq('ride_id', ride.id)
+          .eq('status', 'confirmed')
+          .limit(4);
+
+        // Flatten driver_docs into the driver object for easy client-side access
+        const driverRaw = ride.driver;
+        const driverDoc = driverRaw?.driver_docs?.[0] ?? null;
+        const driver = driverRaw
+          ? {
+              id:            driverRaw.id,
+              name:          driverRaw.name,
+              avatar_url:    driverRaw.avatar_url,
+              rating:        driverRaw.rating,
+              vehicle_model: driverDoc?.vehicle_model ?? null,
+              number_plate:  driverDoc?.number_plate  ?? null,
+            }
+          : null;
+
+        return {
+          ...ride,
+          driver,
+          passengers: (bookings || []).map((b) => ({
+            name:      b.passenger?.name      ?? 'Passenger',
+            photo_url: b.passenger?.avatar_url ?? null,
+          })),
+        };
+      })
+    );
+
+    res.json({ rides: enriched });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { createRide, searchRides, getRide, updateRide, getUpcomingRides };

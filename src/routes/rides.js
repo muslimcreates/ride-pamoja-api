@@ -19,4 +19,7 @@ router.post('/', requireDriver, createRide);
 // GET /api/rides/:id — anyone can view a ride
 router.get('/:id', getRide);
 
-// PATCH /a
+// PATCH /api/rides/:id — driver updates or cancels
+router.patch('/:id', requireDriver, updateRide);
+
+module.exports = router;
