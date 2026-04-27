@@ -176,4 +176,4 @@ async function updateRide(req, res, next) {
   }
 }
 
-module.exports = { createRide, searchRides, getRide, updateRide };
+// ── GET /api/rides/upcoming — active rides departing in the
