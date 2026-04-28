@@ -8,8 +8,8 @@ async function createBooking(req, res, next) {
 
     if (!ride_id) return res.status(400).json({ error: 'ride_id is required' });
     const numSeats = parseInt(seats, 10);
-    if (isNaN(numSeats) || numSeats < 1 || numSeats > 4) {
-      return res.status(400).json({ error: 'Seats must be between 1 and 4' });
+    if (isNaN(numSeats) || numSeats < 1 || numSeats > 6) {
+      return res.status(400).json({ error: 'Seats must be between 1 and 6' });
     }
 
     // 1. Read ride — get current snapshot (includes available_seats for optimistic lock)

@@ -4,6 +4,8 @@ const helmet = require('helmet');
 const cors = require('cors');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
+const cron = require('node-cron');
+const supabase = require('./services/supabaseClient');
 
 const authRoutes = require('./routes/auth');
 const ridesRoutes = require('./routes/rides');
@@ -67,6 +69,27 @@ app.use((req, res) => {
 
 // ── Global error handler ──────────────────────────────────────────────────────
 app.use(errorHandler);
+
+// ── Auto-expire rides ─────────────────────────────────────────────────────────
+// Runs every 30 minutes — marks active rides whose departure time has passed as 'completed'
+cron.schedule('*/30 * * * *', async () => {
+  try {
+    const { data, error } = await supabase
+      .from('rides')
+      .update({ status: 'completed' })
+      .eq('status', 'active')
+      .lt('departure_time', new Date().toISOString())
+      .select('id');
+
+    if (error) {
+      console.error('⏰ Auto-expire cron error:', error.message);
+    } else if (data && data.length > 0) {
+      console.log(`⏰ Auto-expired ${data.length} ride(s)`);
+    }
+  } catch (err) {
+    console.error('⏰ Auto-expire cron crashed:', err.message);
+  }
+});
 
 // ── Start server ──────────────────────────────────────────────────────────────
 app.listen(PORT, () => {

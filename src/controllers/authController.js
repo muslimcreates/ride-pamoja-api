@@ -316,4 +316,23 @@ async function verifyOtp(req, res, next) {
   }
 }
 
-module.exports = { register, login, googleAuth, saveProfile, getMe, sendOtp, verifyOtp };
+// ── DELETE /api/auth/account — permanently delete the calling user's account ──
+async function deleteAccount(req, res, next) {
+  try {
+    const userId = req.user.id;
+
+    // Supabase FK cascade deletes bookings, messages, ratings, driver_documents, payments
+    const { error } = await supabase
+      .from('users')
+      .delete()
+      .eq('id', userId);
+
+    if (error) throw error;
+
+    res.json({ message: 'Account deleted successfully.' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { register, login, googleAuth, saveProfile, getMe, sendOtp, verifyOtp, deleteAccount };

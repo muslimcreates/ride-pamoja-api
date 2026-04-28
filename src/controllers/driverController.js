@@ -3,7 +3,7 @@ const supabase = require('../services/supabaseClient');
 // ── POST /api/driver/verify — submit verification documents ───────────────────
 async function submitVerification(req, res, next) {
   try {
-    const { number_plate, vehicle_model, license_url, vehicle_image_url } = req.body;
+    const { number_plate, vehicle_model, vehicle_color, license_url, vehicle_image_url } = req.body;
     const userId = req.user.id;
 
     if (!number_plate?.trim() || !vehicle_model?.trim()) {
@@ -16,6 +16,7 @@ async function submitVerification(req, res, next) {
         user_id:            userId,
         number_plate:       number_plate.toUpperCase().trim(),
         vehicle_model:      vehicle_model.trim(),
+        vehicle_color:      vehicle_color?.trim() || null,
         license_url:        license_url   || null,
         vehicle_image_url:  vehicle_image_url || null,
         verification_status: 'pending',

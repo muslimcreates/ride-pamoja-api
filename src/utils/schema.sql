@@ -206,6 +206,25 @@ language sql stable as $$
   order by r.departure_time asc, price_per_seat asc;
 $$;
 
+-- ── driver_documents (vehicle verification) ─────────────────────────────────
+-- Run this if the table doesn't exist yet, OR add vehicle_color to an existing one:
+-- alter table driver_documents add column if not exists vehicle_color text;
+create table if not exists driver_documents (
+  id                  uuid primary key default gen_random_uuid(),
+  user_id             uuid not null references users(id) on delete cascade,
+  number_plate        text,
+  vehicle_model       text,
+  vehicle_color       text,
+  license_url         text,
+  vehicle_image_url   text,
+  verification_status text default 'pending'
+                        check (verification_status in ('pending', 'approved', 'rejected')),
+  created_at          timestamptz default now(),
+  updated_at          timestamptz default now(),
+  unique(user_id)
+);
+create index if not exists idx_driver_docs_user on driver_documents(user_id);
+
 -- ════════════════════════════════════════════════════════════════════════════
 -- Row Level Security — enable after initial setup
 -- ════════════════════════════════════════════════════════════════════════════

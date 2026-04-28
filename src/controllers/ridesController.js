@@ -106,13 +106,28 @@ async function getRide(req, res, next) {
       .from('rides')
       .select(`
         *,
-        driver:users!driver_id(id, name, rating, trip_count, avatar_url, phone)
+        driver:users!driver_id(
+          id, name, rating, trip_count, avatar_url, phone,
+          driver_docs:driver_documents!user_id(vehicle_model, number_plate, vehicle_color)
+        )
       `)
       .eq('id', id)
       .single();
 
     if (error || !ride) {
       return res.status(404).json({ error: 'Ride not found' });
+    }
+
+    // Flatten driver_docs into driver for easy client access
+    if (ride.driver && Array.isArray(ride.driver.driver_docs)) {
+      const doc = ride.driver.driver_docs[0] ?? null;
+      ride.driver = {
+        ...ride.driver,
+        vehicle_model:  doc?.vehicle_model  ?? null,
+        number_plate:   doc?.number_plate   ?? null,
+        vehicle_color:  doc?.vehicle_color  ?? null,
+        driver_docs:    undefined,
+      };
     }
 
     // Count confirmed bookings for this ride

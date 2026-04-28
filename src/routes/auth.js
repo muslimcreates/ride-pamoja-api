@@ -4,7 +4,7 @@ const { requireAuth } = require('../middleware/auth');
 const {
   register, login, googleAuth,
   sendOtp, verifyOtp,        // legacy phone OTP — kept for backward compat
-  saveProfile, getMe,
+  saveProfile, getMe, deleteAccount,
 } = require('../controllers/authController');
 
 const router = express.Router();
@@ -37,7 +37,8 @@ router.post('/send-otp',   otpLimiter, sendOtp);
 router.post('/verify-otp', otpLimiter, verifyOtp);
 
 // ── Protected routes (require valid JWT) ──────────────────────────────────
-router.post('/profile', requireAuth, saveProfile);
-router.get('/me',       requireAuth, getMe);
+router.post('/profile',  requireAuth, saveProfile);
+router.get('/me',        requireAuth, getMe);
+router.delete('/account', requireAuth, deleteAccount);
 
 module.exports = router;
