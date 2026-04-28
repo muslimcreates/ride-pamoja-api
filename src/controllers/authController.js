@@ -368,4 +368,26 @@ async function deleteAccount(req, res, next) {
   }
 }
 
-module.exports = { register, login, googleAuth, saveProfile, getMe, sendOtp, verifyOtp, deleteAccount };
+// ── PATCH /api/auth/me — update name and/or avatar_url ───────────────────────
+async function updateProfile(req, res, next) {
+  try {
+    const userId = req.user.id;
+    const { name, avatar_url } = req.body;
+
+    const updates = { updated_at: new Date().toISOString() };
+    if (name?.trim())    updates.name       = name.trim();
+    if (avatar_url)      updates.avatar_url = avatar_url;
+
+    if (Object.keys(updates).length === 1) {
+      return res.status(400).json({ error: 'Provide at least name or avatar_url to update' });
+    }
+
+    const { data: user, error } = await supabase
+      .from('users').update(updates).eq('id', userId).select().single();
+    if (error) throw error;
+
+    res.json({ user: buildUserResponse(user) });
+  } catch (err) { next(err); }
+}
+
+module.exports = { register, login, googleAuth, saveProfile, getMe, updateProfile, sendOtp, verifyOtp, deleteAccount };
