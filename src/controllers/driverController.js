@@ -1,4 +1,5 @@
-const supabase = require('../services/supabaseClient');
+const supabase    = require('../services/supabaseClient');
+const { signToken } = require('../utils/jwt');
 
 // ── POST /api/driver/verify — submit verification documents ───────────────────
 async function submitVerification(req, res, next) {
@@ -28,14 +29,25 @@ async function submitVerification(req, res, next) {
     if (error) throw error;
 
     // Upgrade user role to 'both' so they can post rides immediately
-    await supabase
+    const { data: updatedUser } = await supabase
       .from('users')
       .update({ role: 'both', updated_at: new Date().toISOString() })
-      .eq('id', userId);
+      .eq('id', userId)
+      .select()
+      .single();
+
+    // Issue a NEW token with role='both' — the old token still had 'passenger'
+    // and requireDriver checks the JWT payload, not the DB.
+    const newToken = signToken({
+      id:    userId,
+      email: updatedUser?.email || req.user.email,
+      role:  'both',
+    });
 
     res.json({
       document: doc,
-      message: 'Verification submitted successfully. You can now post rides.',
+      token:    newToken,
+      message:  'Verification submitted successfully. You can now post rides.',
     });
   } catch (err) {
     next(err);
