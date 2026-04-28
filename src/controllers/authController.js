@@ -321,12 +321,45 @@ async function deleteAccount(req, res, next) {
   try {
     const userId = req.user.id;
 
-    // Supabase FK cascade deletes bookings, messages, ratings, driver_documents, payments
-    const { error } = await supabase
-      .from('users')
-      .delete()
-      .eq('id', userId);
+    // 1. Find all booking IDs where this user is the passenger
+    const { data: passengerBookings } = await supabase
+      .from('bookings').select('id').eq('passenger_id', userId);
+    const passengerBookingIds = (passengerBookings || []).map(b => b.id);
 
+    // 2. Find all ride IDs where this user is the driver
+    const { data: driverRides } = await supabase
+      .from('rides').select('id').eq('driver_id', userId);
+    const driverRideIds = (driverRides || []).map(r => r.id);
+
+    // 3. Find all booking IDs on the driver's rides
+    let driverBookingIds = [];
+    if (driverRideIds.length > 0) {
+      const { data: driverBookings } = await supabase
+        .from('bookings').select('id').in('ride_id', driverRideIds);
+      driverBookingIds = (driverBookings || []).map(b => b.id);
+    }
+
+    const allBookingIds = [...new Set([...passengerBookingIds, ...driverBookingIds])];
+
+    // 4. Delete in FK-safe order: messages → ratings → payments → bookings → rides → user
+    if (allBookingIds.length > 0) {
+      await supabase.from('messages').delete().in('booking_id', allBookingIds);
+      await supabase.from('ratings').delete().in('booking_id', allBookingIds);
+      await supabase.from('payments').delete().in('booking_id', allBookingIds);
+      await supabase.from('bookings').delete().in('id', allBookingIds);
+    }
+
+    // Also delete any messages sent by this user not caught above
+    await supabase.from('messages').delete().eq('sender_id', userId);
+    await supabase.from('ratings').delete().eq('rater_id', userId);
+    await supabase.from('ratings').delete().eq('rated_id', userId);
+
+    if (driverRideIds.length > 0) {
+      await supabase.from('rides').delete().in('id', driverRideIds);
+    }
+
+    // 5. Delete the user (driver_profiles + driver_documents cascade)
+    const { error } = await supabase.from('users').delete().eq('id', userId);
     if (error) throw error;
 
     res.json({ message: 'Account deleted successfully.' });
