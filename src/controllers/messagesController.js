@@ -76,4 +76,88 @@ async function sendMessage(req, res, next) {
   }
 }
 
-module.exports = { getMessages, sendMessage };
+// ── POST /api/messages/mark-read ──────────────────────────────────────────────
+// Called when a user opens a chat screen. Upserts a row in message_reads
+// with the current timestamp so we know how far they've read.
+async function markRead(req, res, next) {
+  try {
+    const { booking_id } = req.body;
+    const userId = req.user.id;
+    if (!booking_id) return res.status(400).json({ error: 'booking_id required' });
+
+    const { error } = await supabase
+      .from('message_reads')
+      .upsert(
+        { user_id: userId, booking_id, last_read_at: new Date().toISOString() },
+        { onConflict: 'user_id,booking_id' }
+      );
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ── GET /api/messages/unread-count ────────────────────────────────────────────
+// Returns the total number of unread messages across all of the user's bookings.
+// Unread = message not sent by the user, created after their last_read_at for
+// that booking (or any message if they've never opened the chat).
+async function getUnreadTotal(req, res, next) {
+  try {
+    const userId = req.user.id;
+
+    // Bookings where user is passenger
+    const { data: paxB } = await supabase
+      .from('bookings')
+      .select('id')
+      .eq('passenger_id', userId)
+      .neq('status', 'cancelled');
+
+    // Bookings where user is driver (via their rides)
+    const { data: driverR } = await supabase
+      .from('rides')
+      .select('bookings(id)')
+      .eq('driver_id', userId);
+
+    const driverBookingIds = (driverR || []).flatMap(
+      (r) => (r.bookings || []).map((b) => b.id)
+    );
+
+    const allBookingIds = [
+      ...new Set([...(paxB || []).map((b) => b.id), ...driverBookingIds]),
+    ];
+
+    if (allBookingIds.length === 0) return res.json({ unread_count: 0 });
+
+    // Read receipts this user has — tells us when they last read each booking
+    const { data: reads } = await supabase
+      .from('message_reads')
+      .select('booking_id, last_read_at')
+      .eq('user_id', userId)
+      .in('booking_id', allBookingIds);
+
+    const readMap = {};
+    for (const r of reads || []) {
+      readMap[r.booking_id] = r.last_read_at;
+    }
+
+    // All messages in those bookings that were NOT sent by this user
+    const { data: msgs } = await supabase
+      .from('messages')
+      .select('id, booking_id, created_at')
+      .in('booking_id', allBookingIds)
+      .neq('sender_id', userId);
+
+    const unreadCount = (msgs || []).filter((msg) => {
+      const lastRead = readMap[msg.booking_id];
+      // If never read → always unread; otherwise only count newer messages
+      return !lastRead || new Date(msg.created_at) > new Date(lastRead);
+    }).length;
+
+    res.json({ unread_count: unreadCount });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { getMessages, sendMessage, markRead, getUnreadTotal };
